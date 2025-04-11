@@ -1,6 +1,28 @@
 update_modules() {
+
+  # Effectuer l'appel API avec l'APIKEY et l'idKanban pour récupérer les objets JSON.
+  response=$(curl -s -X GET \
+     --header 'Accept: application/json' \
+     --header "DOLAPIKEY:HRZDEQB4k12198tchv6q6POjDQokd59u" \
+     -w '\nHTTP_STATUS:%{http_code}' \
+     "${'http://localhost/client/doliboard/dolibarr/htdocs/api/index.php/'}webhostapi/getWebModuleInfo?nameModule=${$nameModule}")
+
+    http_status=$(echo "$response" | grep HTTP_STATUS | cut -d':' -f2)
+
+    if [ "$http_status" -eq 401 ]; then
+        echo "Erreur 401 : Veuillez vérifier votre connexion via le VPN ATM."
+        response=""
+    elif [ "$http_status" -eq 200 ]; then
+        response=$(echo "$response" | sed '$d')  # Supprime la dernière ligne (statut HTTP)
+    else
+        echo "Erreur : Code de statut HTTP inattendu ($http_status)"
+        response=""
+    fi
+
     local initial_dir
     modules_path="/home/client/dolibarr_test/dolibarr/htdocs/custom"
+    echo $modules_path
+    exit
 
     echo -e "\n🚀 DÉMARRAGE DE LA MISE À JOUR DES MODULES DANS : $modules_path\n"
     initial_dir=$(pwd)
@@ -8,6 +30,7 @@ update_modules() {
     for module in "$modules_path"/*; do
         if [ -d "$module/.git" ]; then
             module_name=$(basename "$module")
+
 
             echo -e "\n🔍 Traitement du module : $module_name\n"
             # Vérification des permissions Git "dubious ownership"
