@@ -1,121 +1,128 @@
+#!/bin/bash
+
 update_modules() {
+  # ─────────────────────────────────────────────────────────────
+  # 🎛️ CONFIGURATION
+  # ─────────────────────────────────────────────────────────────
+  apikey="HRZDEQB4k12198tchv6q6POjDQokd59u"
+  url_base="http://localhost/client/doliboard/dolibarr/htdocs/api/index.php"
+  dry_run=false
+  modules_path="${1:-/home/client/dolibarr_test/dolibarr/htdocs/custom}"  # Argument ou valeur par défaut
+  initial_dir=$(pwd)
 
-  # Effectuer l'appel API avec l'APIKEY et l'idKanban pour récupérer les objets JSON.
-  response=$(curl -s -X GET \
-     --header 'Accept: application/json' \
-     --header "DOLAPIKEY:HRZDEQB4k12198tchv6q6POjDQokd59u" \
-     -w '\nHTTP_STATUS:%{http_code}' \
-     "${'http://localhost/client/doliboard/dolibarr/htdocs/api/index.php/'}webhostapi/getWebModuleInfo?nameModule=${$nameModule}")
+  # Vérifie si --dry-run est passé
+  [[ "$2" == "--dry-run" || "$1" == "--dry-run" ]] && dry_run=true
 
+  echo -e "\n🚀 DÉMARRAGE DE LA MISE À JOUR DES MODULES DANS : $modules_path"
+  $dry_run && echo "🔍 MODE DRY RUN ACTIVÉ — Aucune modification ne sera appliquée."
+
+  for module in "$modules_path"/*; do
+    module_name=$(basename "$module")
+
+    echo -e "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🔍 Traitement du module : $module_name"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # ─────────────────────────────────────────────────────────────
+    # 🌐 APPEL API POUR INFOS DU MODULE
+    # ─────────────────────────────────────────────────────────────
+    response=$(curl -s -X GET \
+      --header 'Accept: application/json' \
+      --header "DOLAPIKEY: $apikey" \
+      -w '\nHTTP_STATUS:%{http_code}' \
+      "${url_base}/webhostapi/getWebModuleInfo?nameModule=${module_name}"
+    )
     http_status=$(echo "$response" | grep HTTP_STATUS | cut -d':' -f2)
 
     if [ "$http_status" -eq 401 ]; then
-        echo "Erreur 401 : Veuillez vérifier votre connexion via le VPN ATM."
-        response=""
-    elif [ "$http_status" -eq 200 ]; then
-        response=$(echo "$response" | sed '$d')  # Supprime la dernière ligne (statut HTTP)
-    else
-        echo "Erreur : Code de statut HTTP inattendu ($http_status)"
-        response=""
+      echo "❌ Erreur 401 : Vérifiez votre connexion VPN ATM."
+      continue
+    elif [ "$http_status" -ne 200 ]; then
+      echo "❌ Erreur HTTP ($http_status) pour $module_name"
+      continue
     fi
 
-    local initial_dir
-    modules_path="/home/client/dolibarr_test/dolibarr/htdocs/custom"
-    echo $modules_path
-    exit
+    # On enlève la ligne HTTP_STATUS
+    response=$(echo "$response" | sed '$d')
 
-    echo -e "\n🚀 DÉMARRAGE DE LA MISE À JOUR DES MODULES DANS : $modules_path\n"
-    initial_dir=$(pwd)
+    git_url=$(echo "$response" | grep -oP '"git_url"\s*:\s*"\K[^"]+')
+    latest=$(echo "$response" | grep -oP '"last_release"\s*:\s*"\K[^"]+')
 
-    for module in "$modules_path"/*; do
-        if [ -d "$module/.git" ]; then
-            module_name=$(basename "$module")
+    if [[ -z "$git_url" ]]; then
+      echo "❌ Pas d'URL Git pour $module_name. On continue sans mise à jour."
+    fi
 
+    # ─────────────────────────────────────────────────────────────
+    # 🔁 MISE À JOUR DU MODULE SI GIT DISPONIBLE
+    # ─────────────────────────────────────────────────────────────
+    if [ -d "$module/.git" ]; then
+      echo "✅ $module_name est déjà un dépôt Git."
+      cd "$module" || continue
 
-            echo -e "\n🔍 Traitement du module : $module_name\n"
-            # Vérification des permissions Git "dubious ownership"
-            if ! git -C "$module" rev-parse --is-inside-work-tree &>/dev/null; then
-                echo "⚠️  Dépôt Git non sécurisé détecté, ajout à safe.directory..."
-                git config --global --add safe.directory "$module"
-            fi
+      $dry_run || git remote set-url origin "$git_url"
+      $dry_run || git reset --hard
 
-            # Vérifier si un remote 'origin' existe
-            if ! git -C "$module" remote get-url origin &>/dev/null; then
-                echo "❌ Pas de remote 'origin' configuré pour $module_name, passage au suivant."
-                continue
-            fi
-
-            # Recherche du fichier de classe du module
-            mod_file=$(find "$module/core" -type f -iname "mod$module_name.class.php" | head -n 1)
-            if [[ -f "$mod_file" ]]; then
-                if ! grep -iEq '\$this->editor_name *= *["'\''].*atm.*["'\'']' "$mod_file"; then
-                    echo "⚠️  Module $module_name ignoré (éditeur non ATM)."
-                    continue
-                else
-                    class_name=$(grep -i "class " "$mod_file" | grep -i "extends dolibarrmodules" | sed -E 's/class ([a-zA-Z0-9_]+).*/\1/' | head -n 1)
-                    echo "✅ Classe du module détectée : $class_name"
-                fi
-            else
-                echo "❌ Aucun fichier de classe trouvé pour $module_name, passage au suivant."
-                continue
-            fi
-
-            # Mise à jour du module via Git
-            cd "$module" || continue
-            echo "🔄 Réinitialisation des modifications locales..."
-            git reset --hard
-
-            export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-
-            latest=$(git ls-remote --heads origin | awk -F'/' '{print $NF}' | grep -E '^[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
-
-            if [ -n "$latest" ]; then
-                echo "🌿 Passage à la branche la plus récente : $latest"
-
-                # Vérifier si la branche distante est déjà en local
-                if ! git show-ref --verify --quiet "refs/remotes/origin/$latest"; then
-                    echo "📥 La branche $latest n'est pas en local, récupération..."
-                    git fetch origin +refs/heads/"$latest":refs/remotes/origin/"$latest"
-                fi
-            else
-                echo "🔎 Aucune branche versionnée trouvée, tentative avec main ou master..."
-                latest=""
-                if git show-ref --verify --quiet refs/remotes/origin/main; then
-                    latest="main"
-                elif git show-ref --verify --quiet refs/remotes/origin/master; then
-                    latest="master"
-                fi
-            fi
-
-            if [[ -n "$latest" ]]; then
-                echo "⬇️ Positionnement sur la branche à jour du module : $latest"
-                git checkout -B "$latest" origin/"$latest"
-            else
-                echo "❌ Aucune branche valide trouvée pour $module_name !"
-                continue
-            fi
-
-            # Activation/désactivation du module dans Dolibarr
-            if [[ -f "/home/client/dolibarr_test/dolibarr/module_manager.php" ]]; then
-                if [[ -n "$class_name" ]]; then
-                    echo "⚙️  Gestion de l'activation du module $class_name..."
-                    php /home/client/dolibarr_test/dolibarr/module_manager_entity.php "$class_name"
-                else
-                    echo "❌ Impossible de déterminer la classe du module $module_name."
-                fi
-            else
-                echo "❌ Fichier module_manager.php introuvable dans $(pwd)."
-            fi
-
-            cd "$initial_dir" || exit
-            echo -e "✅ Fin du traitement du module : $module_name\n"
-        else
-            echo "⏭️  Module non versionné avec Git : $(basename "$module"), passage au suivant."
+      if [[ -n "$latest" ]]; then
+        echo "🌿 Tentative checkout sur la release : $latest"
+        if ! git ls-remote --exit-code --heads origin "$latest" &> /dev/null; then
+          echo "📥 Branche $latest absente localement. Fetch..."
+          $dry_run || git fetch origin +refs/heads/"$latest":refs/remotes/origin/"$latest"
         fi
-    done
+        $dry_run || git checkout -B "$latest" origin/"$latest"
+      else
+        echo "🔎 Aucune release définie. Tentative sur main/master"
+        for branch in main master; do
+          if git show-ref --verify --quiet refs/remotes/origin/$branch; then
+            $dry_run || git checkout -B "$branch" origin/"$branch"
+            break
+          fi
+        done
+      fi
+    # ─────────────────────────────────────────────────────────────
+    # 🔁 MAJ GIT NON DISPONIBLE
+    # ─────────────────────────────────────────────────────────────
+    elif [[ -n "$git_url" ]]; then
+      echo "⏭️  $module_name n'est pas un dépôt Git. Clonage du dépôt..."
+      temp_clone_dir=$(mktemp -d)
 
-    echo -e "\n✅ MISE À JOUR DES MODULES TERMINÉE !\n"
+      if [[ -n "$latest" ]]; then
+        git_clone_cmd="git clone -b $latest \"$git_url\" \"$temp_clone_dir\""
+      else
+        git_clone_cmd="git clone \"$git_url\" \"$temp_clone_dir\""
+      fi
+
+      echo "🔧 $git_clone_cmd"
+      $dry_run || eval "$git_clone_cmd"
+
+      echo "🧩 Synchronisation avec rsync..."
+      $dry_run || rsync -a --delete "$temp_clone_dir/" "$module/"
+      $dry_run || rm -rf "$temp_clone_dir"
+    else
+      echo "⚠️  Aucune action Git effectuée pour $module_name"
+    fi
+
+    # ─────────────────────────────────────────────────────────────
+    # ⚙️ ACTIVATION / DÉSACTIVATION DU MODULE
+    # ─────────────────────────────────────────────────────────────
+    class_name=$(echo "$module_name" | awk '{print toupper($0)}')
+
+    if [[ -f "/home/client/dolibarr_test/dolibarr/module_manager_entity.php" ]]; then
+      if [[ -n "$class_name" ]]; then
+        echo "⚙️  (Dé)activation du module $class_name..."
+        $dry_run || php /home/client/dolibarr_test/dolibarr/module_manager_entity.php "$class_name"
+      else
+        echo "❌ Classe du module non déterminée."
+      fi
+    else
+      echo "❌ Fichier module_manager_entity.php introuvable."
+    fi
+
+    cd "$initial_dir" || exit
+    echo -e "✅ Fin du traitement du module : $module_name"
+  done
+
+  echo -e "\n✅ MISE À JOUR DES MODULES TERMINÉE !\n"
 }
 
-# Lancer la fonction en prenant les arguments en compte
+# Appel de la fonction avec les arguments
 update_modules "$@"
