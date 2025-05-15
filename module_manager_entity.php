@@ -11,22 +11,8 @@ while ($i > 0 && $j > 0 && isset($tmp[$i]) && isset($tmp2[$j]) && $tmp[$i] == $t
 	$j--;
 }
 
-if (!$res && $i > 0 && file_exists(substr($tmp, 0, ($i + 1)) . "/master.inc.php")) {
-	$res = @include substr($tmp, 0, ($i + 1)) . "/master.inc.php";
-}
 
-if (!$res && file_exists("../master.inc.php")) {
-	$res = @include "../master.inc.php";
-}
-
-if (!$res && file_exists("../../master.inc.php")) {
-	$res = @include "../../master.inc.php";
-}
-
-if (!$res) {
-	die("Include of master fails\n");
-}
-
+require_once "/home/client/dolibarr_test/dolibarr/htdocs/master.inc.php";
 require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
 
 global $db;
