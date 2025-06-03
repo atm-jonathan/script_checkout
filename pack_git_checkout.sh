@@ -1,5 +1,19 @@
 #!/bin/bash
 
+# ───────────────────────────────────────────────
+# 🎯 Fonction pour pull avec retries
+# ───────────────────────────────────────────────
+try_git_pull() {
+  local branch="$1"
+  for i in {1..3}; do
+    echo "🌀 Tentative $i de git pull..."
+    git pull origin "$branch" && return 0
+    sleep 3
+  done
+  echo "❌ Échec de git pull après 3 tentatives"
+  return 1
+}
+
 update_modules() {
   # ─────────────────────────────────────────────────────────────
   # 🎛️ CONFIGURATION
@@ -38,95 +52,84 @@ update_modules() {
     git_url=$(echo "$response_json" | grep -o '"git_url"[ ]*:[ ]*"[^"]*"' | cut -d':' -f2- | tr -d ' "')
     latest=$(echo "$response_json" | grep -o '"module_version"[ ]*:[ ]*"[^"]*"' | head -n 1 | cut -d':' -f2 | tr -d ' "')
 
-#echo "$latest dans $git_url"
-
-
-
-
-
     # Si la variable est déjà définie (non vide), ne pas réassigner
-#    if [[ -z "$latest" ]]; then
-#        latest=$(echo "$response_json" | sed -n 's/.*"version"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
-#    fi
+    if [[ -z "$latest" ]]; then
+        latest=$(echo "$response_json" | sed -n 's/.*"version"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+    fi
 
-#    if [ -d "$module_path/.git" ]; then
-#      echo "✅ $nameModule est déjà un dépôt Git."
-#      cd "$module_path" || continue
+    if [ -d "$module_path/.git" ]; then
+      echo "✅ $nameModule est déjà un dépôt Git."
+      cd "$module_path" || continue
 
 #      current_user=$(whoami)
 #      owner=$(stat -c '%U' "$module_path")
 #      if [[ "$owner" != "$current_user" ]]; then
 #        echo "❌ Propriétaire ($owner) différent de l'utilisateur courant ($current_user), passage au module suivant."
-#      #  continue
-#      fi
-
-#      current_remote=$(git remote get-url origin)
-#      if [ "$current_remote" != "$git_url" ]; then
-#        echo "❌ L'URL distante ($current_remote) est différente de l'URL attendue ($git_url). Passage au module suivant."
-#        cd "$initial_dir"
 #        continue
 #      fi
 
-#      if [ "$dry_run" = true ]; then
-#        echo "[DRY-RUN] git reset --hard"
-#      else
-#        echo "reset --hard"
-#        git reset --hard
-#      fi
-#
-#      if [[ -n "$latest" ]]; then
-#        echo "🌿 Tentative checkout sur la release : $latest"
-#        current_branch=$(git rev-parse --abbrev-ref HEAD | tr -d '[:space:]')
-#        latest=$(echo "$latest" | tr -d '[:space:]')
-#
-#        echo "$current_branch == $latest"
-#
-        if [[ -z "$latest" ]]; then
-            echo "⚠️ La variable latest est vide. Recherche de la branche par défaut..."
-            if git ls-remote --exit-code --heads origin main &> /dev/null; then
-                latest="main"
-                echo "🌿 La branche main existe, utilisation de main."
-            elif git ls-remote --exit-code --heads origin master &> /dev/null; then
-                latest="master"
-                echo "🌿 La branche master existe, utilisation de master."
+      current_remote=$(git remote get-url origin)
+      if [ "$current_remote" != "$git_url" ]; then
+        echo "❌ L'URL distante ($current_remote) est différente de l'URL attendue ($git_url). Passage au module suivant."
+        cd "$initial_dir"
+        continue
+      fi
+      if [ "$dry_run" = true ]; then
+        echo "[DRY-RUN] git reset --hard"
+      else
+        git reset --hard
+      fi
+
+      if [[ -n "$latest" ]]; then
+        echo "🌿 Tentative checkout sur la release : $latest"
+        current_branch=$(git rev-parse --abbrev-ref HEAD | tr -d '[:space:]')
+        latest=$(echo "$latest" | tr -d '[:space:]')
+
+        echo "$current_branch == $latest"
+
+      # Si "latest" est vide, Passage au module suivant.
+       if [[ -z "$latest" ]]; then
+         echo "❌ Aucune branche par défaut trouvée. Passage au module suivant."
+         continue
+       fi
+
+        # Si on est déjà sur la bonne branche : simple pull
+        if [[ "$current_branch" == "$latest" ]]; then
+            echo "🔄 La branche $latest est déjà checkout. Mise à jour..."
+            if [ "$dry_run" = true ]; then
+                echo "[DRY-RUN] git pull"
             else
-                echo "❌ Aucune branche par défaut trouvée. Passage au module suivant."
+                echo "git pull"
+                try_git_pull "$latest"
+            fi
+        else
+            echo "📥 Changement de branche vers $latest"
+
+            # On vérifie que la branche existe bien sur le remote (précaution supplémentaire)
+            if ! git ls-remote --exit-code --heads origin "$latest" &> /dev/null; then
+                echo "❌ La branche $latest n'existe pas sur le remote. Passage au module suivant."
                 continue
             fi
-        fi
-        if [[ "$current_branch" == "$latest" ]]; then
-          echo "🔄 La branche $latest est déjà checkout. Mise à jour..."
-          if [ "$dry_run" = true ]; then
-            echo "[DRY-RUN] git pull"
-          else
-            echo "git pull"
-            git pull
-          fi
-          else
-            echo "📥 Changement de branche vers $latest"
-            if ! git ls-remote --exit-code --heads origin "$latest" &> /dev/null; then
-              echo "📥 Branche $latest absente localement. Fetch..."
-              if [ "$dry_run" = true ]; then
-                echo "[DRY-RUN] git fetch origin +refs/heads/$latest:refs/remotes/origin/$latest"
-              else
-                echo "fetch origin"
-                git fetch origin +refs/heads/"$latest":refs/remotes/origin/"$latest"
-              fi
-            fi
+
+            # On s’assure que la référence origin/$latest est à jour (toujours faire un fetch)
             if [ "$dry_run" = true ]; then
-              echo "[DRY-RUN] git checkout -B \"$latest\" origin/$latest"
+                echo "[DRY-RUN] git fetch origin +refs/heads/$latest:refs/remotes/origin/$latest"
+                echo "[DRY-RUN] git checkout -B \"$latest\" origin/$latest"
             else
-              echo "checkout -B"
-              git checkout -B "$latest" origin/"$latest"
+                echo "fetch origin/$latest"
+                git fetch origin +refs/heads/"$latest":refs/remotes/origin/"$latest"
+                echo "checkout -B $latest"
+                git checkout -B "$latest" origin/"$latest"
             fi
-          fi
+        fi
       fi
-#      cd "$initial_dir" || exit
-#      echo -e "✅ Fin du traitement du module : $nameModule"
-#
-#      class_name=$(echo "$nameModule" | awk '{print toupper($0)}')
-#      core_dir="${module_path}/core"
-#
+
+      cd "$initial_dir" || exit
+      echo -e "✅ Fin du traitement du module : $nameModule"
+
+      class_name=$(echo "$nameModule" | awk '{print toupper($0)}')
+      core_dir="${module_path}/core"
+
 #      if [[ -f "/home/client/dolibarr_test/dolibarr/module_manager_entity.php" ]]; then
 #        if [[ -n "$class_name" && -d "$core_dir" ]]; then
 #          class_file=$(find "$core_dir" -type f -iname "mod${class_name}.class.php" | head -n 1)
@@ -150,16 +153,17 @@ update_modules() {
 #      else
 #        echo "❌ Fichier module_manager_entity.php introuvable."
 #      fi
-#    else
-#      echo "❌ $nameModule n'est pas un dépôt Git. Aucune mise à jour possible."
-#    fi
-#
+
+    else
+      echo "❌ $nameModule n'est pas un dépôt Git. Aucune mise à jour possible."
+    fi
   done
   echo -e "\n✅ MISE À JOUR DES MODULES TERMINÉE !\n"
 }
 
-# 🏁 PARSING DES ARGUMENTS
-
+# ───────────────────────────────────────────────
+# 🏁 Parsing des arguments
+# ───────────────────────────────────────────────
 dry_run=false
 for arg in "$@"; do
   if [[ "$arg" == "--dry-run" ]]; then
@@ -168,4 +172,7 @@ for arg in "$@"; do
   fi
 done
 
+# ───────────────────────────────────────────────
+# ▶️ Appel de la fonction principale
+# ───────────────────────────────────────────────
 update_modules "$@"
