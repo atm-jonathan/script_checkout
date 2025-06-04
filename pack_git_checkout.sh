@@ -20,8 +20,18 @@ update_modules() {
   # ─────────────────────────────────────────────────────────────
   apikey="VdKb0uBoO4vtV01mgA8x8QibKE1364GJ"
   url_base="https://testatm.srv138.atm-consulting.fr/api/index.php"
-  modules_path="/home/client/dolibarr_test/dolibarr/htdocs/custom"
+  local dolibarr_base_path="$1"
+
+  if [[ ! -d "$dolibarr_base_path/htdocs/custom" ]]; then
+    echo "❌ Dossier $dolibarr_base_path/htdocs/custom introuvable"
+    return
+  fi
+
+  local modules_path="$dolibarr_base_path/htdocs/custom"
+  local initial_dir
   initial_dir=$(pwd)
+
+  echo "🔁 Parcours des modules dans : $modules_path"
 
   echo -e "\n🚀 DÉMARRAGE DE LA MISE À JOUR DES MODULES DANS : $modules_path\n"
 
@@ -51,7 +61,8 @@ update_modules() {
     response_json=$(echo "$response" | sed '$d')
     git_url=$(echo "$response_json" | grep -o '"git_url"[ ]*:[ ]*"[^"]*"' | cut -d':' -f2- | tr -d ' "')
     latest=$(echo "$response_json" | grep -o '"module_version"[ ]*:[ ]*"[^"]*"' | head -n 1 | cut -d':' -f2 | tr -d ' "')
-
+echo "$git_url"
+echo "$latest"
     # Si la variable est déjà définie (non vide), ne pas réassigner
     if [[ -z "$latest" ]]; then
         latest=$(echo "$response_json" | sed -n 's/.*"version"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
@@ -123,12 +134,11 @@ update_modules() {
             fi
         fi
       fi
-
       cd "$initial_dir" || exit
       echo -e "✅ Fin du traitement du module : $nameModule"
-
-      class_name=$(echo "$nameModule" | awk '{print toupper($0)}')
-      core_dir="${module_path}/core"
+#
+#      class_name=$(echo "$nameModule" | awk '{print toupper($0)}')
+#      core_dir="${module_path}/core"
 
 #      if [[ -f "/home/client/dolibarr_test/dolibarr/module_manager_entity.php" ]]; then
 #        if [[ -n "$class_name" && -d "$core_dir" ]]; then
@@ -158,7 +168,7 @@ update_modules() {
       echo "❌ $nameModule n'est pas un dépôt Git. Aucune mise à jour possible."
     fi
   done
-  echo -e "\n✅ MISE À JOUR DES MODULES TERMINÉE !\n"
+#  echo -e "\n✅ MISE À JOUR DES MODULES TERMINÉE !\n"
 }
 
 # ───────────────────────────────────────────────
@@ -175,4 +185,20 @@ done
 # ───────────────────────────────────────────────
 # ▶️ Appel de la fonction principale
 # ───────────────────────────────────────────────
-update_modules "$@"
+# Chemin de base où sont tous les Dolibarr à traiter
+base_dir="/home/client/git"
+
+# Boucle sur tous les dossiers Dolibarr dans ce chemin
+for dolibarr_dir in "$base_dir"/*/; do
+  if [[ ! -d "$dolibarr_dir" ]]; then
+  continue
+  fi
+  if [[ ! -d "$dolibarr_dir/htdocs/custom" ]]; then
+  echo "⚠️ $(basename "$dolibarr_dir") ne contient pas de dossier htdocs/custom, ignoré."
+  continue
+  fi
+  echo -e "\n=============================="
+  echo "🚀 Lancement sur $(basename "$dolibarr_dir")"
+  echo "=============================="
+  update_modules "$dolibarr_dir"
+done
