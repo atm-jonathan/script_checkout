@@ -1,5 +1,5 @@
 #!/bin/bash
-#voir https://chatgpt.com/share/683ee8b6-e774-8003-ad79-1aacf4badb82
+
 # ───────────────────────────────────────────────
 # 🎯 Fonction pour pull avec retries
 # ───────────────────────────────────────────────
@@ -61,12 +61,13 @@ update_modules() {
     response_json=$(echo "$response" | sed '$d')
     git_url=$(echo "$response_json" | grep -o '"git_url"[ ]*:[ ]*"[^"]*"' | cut -d':' -f2- | tr -d ' "')
     latest=$(echo "$response_json" | grep -o '"module_version"[ ]*:[ ]*"[^"]*"' | head -n 1 | cut -d':' -f2 | tr -d ' "')
-
-    # Si la variable est déjà définie (non vide), ne pas réassigner
-    if [[ -z "$latest" ]]; then
-        latest=$(echo "$response_json" | sed -n 's/.*"version"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
-    fi
-
+    echo "----- $git_url pour $latest ------"
+#
+#    # Si la variable est déjà définie (non vide), ne pas réassigner
+#    if [[ -z "$latest" ]]; then
+#        latest=$(echo "$response_json" | sed -n 's/.*"version"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+#    fi
+#
     if [ -d "$module_path/.git" ]; then
       echo "✅ $nameModule est déjà un dépôt Git."
       cd "$module_path" || continue
@@ -87,6 +88,7 @@ update_modules() {
       if [ "$dry_run" = true ]; then
         echo "[DRY-RUN] git reset --hard"
       else
+        echo "git reset --hard"
         git reset --hard
       fi
 
@@ -134,24 +136,22 @@ update_modules() {
         fi
       fi
       cd "$initial_dir" || exit
-      echo -e "✅ Fin du traitement du module : $nameModule"
+      echo -e "✅ Fin du traitement GIT du module : $nameModule"
 
       class_name=$(echo "$nameModule" | awk '{print toupper($0)}')
       core_dir="${module_path}/core"
 
-      if [[ -f "/home/client/dolibarr_test/dolibarr/module_manager_entity.php" ]]; then
+      if [[ -f "/home/client/pack_git/script_checkout/module_manager_entity.php" ]]; then
         if [[ -n "$class_name" && -d "$core_dir" ]]; then
           class_file=$(find "$core_dir" -type f -iname "mod${class_name}.class.php" | head -n 1)
           if [[ -n "$class_file" ]]; then
             class_filename=$(basename "$class_file")
             real_class_name="${class_filename%.class.php}"
-
             echo "📁 Fichier de classe trouvé : $class_filename"
-            echo "⚙️  (Dé)activation du module $real_class_name..."
             if [ "$dry_run" = true ]; then
-              echo "[DRY-RUN] php /home/client/dolibarr_test/script_checkout/module_manager_entity.php \"$real_class_name\""
+              echo "[DRY-RUN] php /home/client/pack_git/script_checkout/module_manager_entity.php "$dolibarr_base_path" \"$real_class_name\""
             else
-              php /home/client/dolibarr_test/script_checkout/module_manager_entity.php "$real_class_name"
+              php /home/client/pack_git/script_checkout/module_manager_entity.php "$dolibarr_base_path" "$real_class_name"
             fi
           else
             echo "❌ Aucun fichier mod${class_name}.class.php trouvé dans $core_dir"
@@ -185,7 +185,7 @@ done
 # ▶️ Appel de la fonction principale
 # ───────────────────────────────────────────────
 # Chemin de base où sont tous les Dolibarr à traiter
-base_dir="/home/client/git"
+base_dir="/home/client/pack_git/"
 
 # Boucle sur tous les dossiers Dolibarr dans ce chemin
 for dolibarr_dir in "$base_dir"/*/; do

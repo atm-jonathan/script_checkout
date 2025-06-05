@@ -1,115 +1,122 @@
 <?php
 
-$res = 0;
-$tmp = empty($_SERVER['SCRIPT_FILENAME']) ? '' : $_SERVER['SCRIPT_FILENAME'];
-$tmp2 = realpath(__FILE__);
-$i = strlen($tmp) - 1;
-$j = strlen($tmp2) - 1;
-
-while ($i > 0 && $j > 0 && isset($tmp[$i]) && isset($tmp2[$j]) && $tmp[$i] == $tmp2[$j]) {
-	$i--;
-	$j--;
+if (count($argv) != 3) {
+    echo "❌ Utilisation : php module_manager_entity.php /chemin/vers/dolibarr modMyModule\n";
+    exit(1);
 }
 
+$dolibarrPath = rtrim($argv[1], '/');
+$moduleClass = $argv[2];
 
-require_once "/home/client/dolibarr_test/dolibarr/htdocs/master.inc.php";
-require_once DOL_DOCUMENT_ROOT . '/core/lib/admin.lib.php';
+// === CHARGER conf.php ===
+$confFile = $dolibarrPath . '/htdocs/conf/conf.php';
+if (!file_exists($confFile)) {
+    echo "❌ Fichier conf.php introuvable : $confFile\n";
+    exit(1);
+}
+require $confFile;
 
-global $db;
+// === INCLURE master.inc.php & lib SQL ===
+require_once $dolibarrPath . '/htdocs/master.inc.php';
+require_once $dolibarrPath . '/htdocs/core/lib/admin.lib.php';
+require_once $dolibarrPath . '/htdocs/core/lib/functions2.lib.php';
+require_once $dolibarrPath . '/htdocs/core/lib/functions.lib.php';
 
-// Récupérer le nom du module à activer/désactiver
-$moduleClass = $argv[1];
+// === CRÉER INSTANCE DB ===
+$db = getDoliDBInstance(
+    $dolibarr_main_db_type,
+    $dolibarr_main_db_host,
+    $dolibarr_main_db_user,
+    $dolibarr_main_db_pass,
+    $dolibarr_main_db_name,
+    (int) $dolibarr_main_db_port
+);
 
-// Vérifier si le module est actif
-function isModuleCurrentlyActive($moduleClass, $entity) {
-	global $db;
-	$moduleClass = strtoupper(str_replace('mod', '', $moduleClass));
-	$sql = "SELECT value FROM " . $db->prefix() . "const WHERE name = 'MAIN_MODULE_" . $moduleClass . "'";
-	if ($entity > 0) {
-		$sql .= " AND entity = $entity";
-	}
-	$resql = $db->query($sql);
-	if ($resql) {
-		$obj = $db->fetch_object($resql);
-		return (is_object($obj) && $obj->value == '1');
-	}
-	return false;
+if (!$db || $db->error) {
+    echo "❌ Erreur connexion base de données : " . ($db->error ?? 'inconnue') . "\n";
+    exit(1);
 }
 
-// Désactiver un module
-function disableCustomModule($moduleClass) {
-	global $db;
-	if (class_exists($moduleClass)) {
-		$objMod = new $moduleClass($db);
-		$ret = $objMod->remove();
-		if ($ret <= 0) {
-			echo "❌ Erreur : Impossible de désactiver le module $moduleClass\n";
-		} else {
-			echo "✅ Module $moduleClass désactivé avec succès\n";
-		}
-	} else {
-		echo "❌ Erreur : Classe du module $moduleClass introuvable\n";
-	}
-}
-
-// Activer un module
-function enableCustomModule($moduleClass) {
-	global $db;
-	if (class_exists($moduleClass)) {
-		$objMod = new $moduleClass($db);
-		$ret = $objMod->init();
-		if ($ret < 0) {
-			echo "❌ Erreur : Impossible d'activer le module $moduleClass\n";
-		} else {
-			echo "✅ Module $moduleClass activé avec succès\n";
-		}
-	} else {
-		echo "❌ Erreur : Classe du module $moduleClass introuvable\n";
-	}
-}
-
-// Récupérer les entités actives
+// === DÉTECTER ENTITÉS ===
 $entities = [];
-$sql = 'SELECT rowid, label FROM ' . MAIN_DB_PREFIX . 'entity WHERE active = 1 ORDER BY rowid ASC';
-$res = $db->query($sql);
-
-if ($res) {
-	while ($obj = $db->fetch_object($res)) {
-		$entities[$obj->rowid] = $obj->label;
-	}
+$res = $db->query('SHOW TABLES LIKE "' . $db->prefix() . 'entity"');
+if ($res && $db->num_rows($res)) {
+    $res = $db->query('SELECT rowid, label FROM ' . $db->prefix() . 'entity WHERE active = 1 ORDER BY rowid ASC');
+    while ($obj = $db->fetch_object($res)) {
+        $entities[$obj->rowid] = $obj->label;
+    }
 }
-$entities = empty($entities) ? [1 => 'no entity'] : $entities;
-
-// Traiter les modules pour chaque entité
+if (empty($entities)) {
+    $entities = [1 => 'no entity'];
+} else {
+    require_once $dolibarrPath . '/htdocs/multicompany/class/actions_multicompany.class.php';
+}
+// === OUTILS MODULE ===
+function isModuleCurrentlyActive($moduleClass, $entityId) {
+    global $db;
+    $moduleShortName = strtoupper(str_replace('mod', '', $moduleClass));
+    $sql = "SELECT value FROM " . $db->prefix() . "const WHERE name = 'MAIN_MODULE_" . $moduleShortName . "' AND entity = " . intval($entityId);
+    $res = $db->query($sql);
+    if ($res && ($obj = $db->fetch_object($res))) {
+        return $obj->value == '1';
+    }
+    return false;
+}
+function disableCustomModule($moduleClass) {
+    global $db;
+    if (class_exists($moduleClass)) {
+        $mod = new $moduleClass($db);
+        $ret = $mod->remove();
+        echo $ret > 0 ? "✅ Module $moduleClass désactivé\n" : "❌ Échec désactivation $moduleClass\n";
+    } else {
+        echo "❌ Classe $moduleClass introuvable\n";
+    }
+}
+function enableCustomModule($moduleClass) {
+    global $db;
+    if (class_exists($moduleClass)) {
+        $mod = new $moduleClass($db);
+        $ret = $mod->init();
+        echo $ret >= 0 ? "✅ Module $moduleClass activé\n" : "❌ Échec activation $moduleClass\n";
+    } else {
+        echo "❌ Classe $moduleClass introuvable\n";
+    }
+}
+// === PARCOURIR LES ENTITÉS ===
 foreach ($entities as $fkEntity => $entityLabel) {
+    echo "\n=== 🔵 Début du traitement pour l'entité $fkEntity : $entityLabel ===\n";
+    $ret = 1;
+    if ($fkEntity != 0 && $entityLabel != 'no entity') {
+        $actionsMulticompany = new ActionsMulticompany($db);
+        $ret = $actionsMulticompany->switchEntity($fkEntity, 1);
+    } else {
+        echo '----------------'.$entityLabel.'----------------';
+    }
+    // Charger classe module dynamiquement
+    $moduleName = strtolower(str_replace('mod', '', $moduleClass));
+    $classPath = "$dolibarrPath/htdocs/custom/$moduleName/core/modules/$moduleClass.class.php";
+    if (!file_exists($classPath)) {
+        echo "❌ Fichier de classe module introuvable : $classPath\n";
+        continue;
+    } else {
+        echo "TROUVÉ : $classPath\n";
+    }
+    require_once $classPath;
 
-	echo "\n=== 🔵 Début du traitement pour l'entité $fkEntity : $entityLabel ===\n";
+    if ($ret > 0) {
+        if (isModuleCurrentlyActive($moduleClass, $fkEntity)) {
+            echo "🔻 Désactivation du module $moduleClass...\n";
+            disableCustomModule($moduleClass);
+            echo "🔺 Réactivation du module $moduleClass...\n";
+            enableCustomModule($moduleClass);
+        } else {
+            echo "✅ Le module $moduleClass est déjà désactivé. Aucun changement nécessaire.\n";
+        }
+    } else {
+        echo "❌ Erreur lors du changement d'entité\n";
+    }
 
-	if ($fkEntity != 0 && $entityLabel != 'no entity') {
-		$actionsMulticompany = new ActionsMulticompany($db);
-		$ret = $actionsMulticompany->switchEntity($fkEntity, 1);
-	} else {
-		$ret = 1;
-	}
-
-	$moduleName = strtolower(str_replace('mod', '', $moduleClass));
-	$class =  $moduleClass . '.class.php';
-	$classPath = "/home/client/dolibarr_test/dolibarr/htdocs/custom/$moduleName/core/modules/$class";
-	require_once $classPath;
-
-	if ($ret > 0) {
-		if (isModuleCurrentlyActive($moduleClass, $fkEntity)) {
-			echo "🔻 Désactivation du module $moduleClass...\n";
-			disableCustomModule($moduleClass);
-			echo "🔺 Réactivation du module $moduleClass...\n";
-			enableCustomModule($moduleClass);
-		} else {
-			echo "✅ Le module $moduleClass est déjà désactivé. Aucun changement nécessaire.\n";
-		}
-	} else {
-		echo "❌ Erreur lors du changement d'entité\n";
-	}
-	echo "\n=== 🟢 Fin du traitement pour l'entité $fkEntity : $entityLabel ===\n";
+    echo "=== 🟢 Fin du traitement pour l'entité $fkEntity ===\n";
 }
 
-?>
+$db = null;
