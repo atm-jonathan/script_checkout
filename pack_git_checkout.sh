@@ -61,8 +61,7 @@ update_modules() {
     response_json=$(echo "$response" | sed '$d')
     git_url=$(echo "$response_json" | grep -o '"git_url"[ ]*:[ ]*"[^"]*"' | cut -d':' -f2- | tr -d ' "')
     latest=$(echo "$response_json" | grep -o '"module_version"[ ]*:[ ]*"[^"]*"' | head -n 1 | cut -d':' -f2 | tr -d ' "')
-echo "$git_url"
-echo "$latest"
+
     # Si la variable est déjà définie (non vide), ne pas réassigner
     if [[ -z "$latest" ]]; then
         latest=$(echo "$response_json" | sed -n 's/.*"version"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
@@ -136,33 +135,33 @@ echo "$latest"
       fi
       cd "$initial_dir" || exit
       echo -e "✅ Fin du traitement du module : $nameModule"
-#
-#      class_name=$(echo "$nameModule" | awk '{print toupper($0)}')
-#      core_dir="${module_path}/core"
 
-#      if [[ -f "/home/client/dolibarr_test/dolibarr/module_manager_entity.php" ]]; then
-#        if [[ -n "$class_name" && -d "$core_dir" ]]; then
-#          class_file=$(find "$core_dir" -type f -iname "mod${class_name}.class.php" | head -n 1)
-#          if [[ -n "$class_file" ]]; then
-#            class_filename=$(basename "$class_file")
-#            real_class_name="${class_filename%.class.php}"
-#
-#            echo "📁 Fichier de classe trouvé : $class_filename"
-#            echo "⚙️  (Dé)activation du module $real_class_name..."
-#            if [ "$dry_run" = true ]; then
-#              echo "[DRY-RUN] php /home/client/dolibarr_test/script_checkout/module_manager_entity.php \"$real_class_name\""
-#            else
-#              php /home/client/dolibarr_test/script_checkout/module_manager_entity.php "$real_class_name"
-#            fi
-#          else
-#            echo "❌ Aucun fichier mod${class_name}.class.php trouvé dans $core_dir"
-#          fi
-#        else
-#          echo "❌ Classe du module non déterminée ou dossier core/ manquant."
-#        fi
-#      else
-#        echo "❌ Fichier module_manager_entity.php introuvable."
-#      fi
+      class_name=$(echo "$nameModule" | awk '{print toupper($0)}')
+      core_dir="${module_path}/core"
+
+      if [[ -f "/home/client/dolibarr_test/dolibarr/module_manager_entity.php" ]]; then
+        if [[ -n "$class_name" && -d "$core_dir" ]]; then
+          class_file=$(find "$core_dir" -type f -iname "mod${class_name}.class.php" | head -n 1)
+          if [[ -n "$class_file" ]]; then
+            class_filename=$(basename "$class_file")
+            real_class_name="${class_filename%.class.php}"
+
+            echo "📁 Fichier de classe trouvé : $class_filename"
+            echo "⚙️  (Dé)activation du module $real_class_name..."
+            if [ "$dry_run" = true ]; then
+              echo "[DRY-RUN] php /home/client/dolibarr_test/script_checkout/module_manager_entity.php \"$real_class_name\""
+            else
+              php /home/client/dolibarr_test/script_checkout/module_manager_entity.php "$real_class_name"
+            fi
+          else
+            echo "❌ Aucun fichier mod${class_name}.class.php trouvé dans $core_dir"
+          fi
+        else
+          echo "❌ Classe du module non déterminée ou dossier core/ manquant."
+        fi
+      else
+        echo "❌ Fichier module_manager_entity.php introuvable."
+      fi
 
     else
       echo "❌ $nameModule n'est pas un dépôt Git. Aucune mise à jour possible."
