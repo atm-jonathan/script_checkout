@@ -61,13 +61,12 @@ update_modules() {
     response_json=$(echo "$response" | sed '$d')
     git_url=$(echo "$response_json" | grep -o '"git_url"[ ]*:[ ]*"[^"]*"' | cut -d':' -f2- | tr -d ' "')
     latest=$(echo "$response_json" | grep -o '"module_version"[ ]*:[ ]*"[^"]*"' | head -n 1 | cut -d':' -f2 | tr -d ' "')
-    echo "----- $git_url pour $latest ------"
-#
-#    # Si la variable est déjà définie (non vide), ne pas réassigner
-#    if [[ -z "$latest" ]]; then
-#        latest=$(echo "$response_json" | sed -n 's/.*"version"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
-#    fi
-#
+
+    # Si la variable est déjà définie (non vide), ne pas réassigner
+    if [[ -z "$latest" ]]; then
+        latest=$(echo "$response_json" | sed -n 's/.*"version"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
+    fi
+
     if [ -d "$module_path/.git" ]; then
       echo "✅ $nameModule est déjà un dépôt Git."
       cd "$module_path" || continue
@@ -85,26 +84,23 @@ update_modules() {
         cd "$initial_dir"
         continue
       fi
+      # Si "latest" est vide, Passage au module suivant.
+       if [[ -z "$latest" ]]; then
+         echo "❌ Aucune branche par défaut trouvée. Passage au module suivant."
+         continue
+       fi
       if [ "$dry_run" = true ]; then
         echo "[DRY-RUN] git reset --hard"
       else
         echo "git reset --hard"
         git reset --hard
       fi
-
       if [[ -n "$latest" ]]; then
         echo "🌿 Tentative checkout sur la release : $latest"
         current_branch=$(git rev-parse --abbrev-ref HEAD | tr -d '[:space:]')
         latest=$(echo "$latest" | tr -d '[:space:]')
 
         echo "$current_branch == $latest"
-
-      # Si "latest" est vide, Passage au module suivant.
-       if [[ -z "$latest" ]]; then
-         echo "❌ Aucune branche par défaut trouvée. Passage au module suivant."
-         continue
-       fi
-
         # Si on est déjà sur la bonne branche : simple pull
         if [[ "$current_branch" == "$latest" ]]; then
             echo "🔄 La branche $latest est déjà checkout. Mise à jour..."
@@ -149,9 +145,10 @@ update_modules() {
             real_class_name="${class_filename%.class.php}"
             echo "📁 Fichier de classe trouvé : $class_filename"
             if [ "$dry_run" = true ]; then
-              echo "[DRY-RUN] php /home/client/pack_git/script_checkout/module_manager_entity.php "$dolibarr_base_path" \"$real_class_name\""
+              php /home/client/pack_git/script_checkout/module_manager_entity.php "$dolibarr_base_path" "$real_class_name" "$dry_run"
             else
-              php /home/client/pack_git/script_checkout/module_manager_entity.php "$dolibarr_base_path" "$real_class_name"
+              no_dry_run = false
+              php /home/client/pack_git/script_checkout/module_manager_entity.php "$dolibarr_base_path" "$real_class_name" "$no_dry_run"
             fi
           else
             echo "❌ Aucun fichier mod${class_name}.class.php trouvé dans $core_dir"
@@ -185,7 +182,7 @@ done
 # ▶️ Appel de la fonction principale
 # ───────────────────────────────────────────────
 # Chemin de base où sont tous les Dolibarr à traiter
-base_dir="/home/client/pack_git/"
+base_dir="/home/client/pack_git"
 
 # Boucle sur tous les dossiers Dolibarr dans ce chemin
 for dolibarr_dir in "$base_dir"/*/; do
