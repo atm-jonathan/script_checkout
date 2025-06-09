@@ -18,8 +18,8 @@ update_modules() {
   # ─────────────────────────────────────────────────────────────
   # 🎛️ CONFIGURATION
   # ─────────────────────────────────────────────────────────────
-  apikey="VdKb0uBoO4vtV01mgA8x8QibKE1364GJ"
-  url_base="https://testatm.srv138.atm-consulting.fr/api/index.php"
+  apikey="jXRBe08gW0448Cg8s3WOiKhvsEXq1gK1"
+  url_base="http://localhost/client/doliboard/dolibarr/htdocs/api/index.php"
   local dolibarr_base_path="$1"
 
   if [[ ! -d "$dolibarr_base_path/htdocs/custom" ]]; then
@@ -137,7 +137,7 @@ update_modules() {
       class_name=$(echo "$nameModule" | awk '{print toupper($0)}')
       core_dir="${module_path}/core"
 
-      if [[ -f "/home/client/pack_git/script_checkout/module_manager_entity.php" ]]; then
+      if [[ -f "/home/client/doliboard/script_checkout/module_manager_entity.php" ]]; then
         if [[ -n "$class_name" && -d "$core_dir" ]]; then
           class_file=$(find "$core_dir" -type f -iname "mod${class_name}.class.php" | head -n 1)
           if [[ -n "$class_file" ]]; then
@@ -145,10 +145,10 @@ update_modules() {
             real_class_name="${class_filename%.class.php}"
             echo "📁 Fichier de classe trouvé : $class_filename"
             if [ "$dry_run" = true ]; then
-              php /home/client/pack_git/script_checkout/module_manager_entity.php "$dolibarr_base_path" "$real_class_name" "$dry_run"
+              php /home/client/doliboard/script_checkout/module_manager_entity.php "$dolibarr_base_path" "$real_class_name" "$dry_run"
             else
               no_dry_run = false
-              php /home/client/pack_git/script_checkout/module_manager_entity.php "$dolibarr_base_path" "$real_class_name" "$no_dry_run"
+              php /home/client/doliboard/script_checkout/module_manager_entity.php "$dolibarr_base_path" "$real_class_name" "$no_dry_run"
             fi
           else
             echo "❌ Aucun fichier mod${class_name}.class.php trouvé dans $core_dir"
@@ -182,7 +182,7 @@ done
 # ▶️ Appel de la fonction principale
 # ───────────────────────────────────────────────
 # Chemin de base où sont tous les Dolibarr à traiter
-base_dir="/home/client/pack_git"
+base_dir="/home/client/doliboard"
 
 # Boucle sur tous les dossiers Dolibarr dans ce chemin
 for dolibarr_dir in "$base_dir"/*/; do
