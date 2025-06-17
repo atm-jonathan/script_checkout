@@ -118,6 +118,13 @@ update_modules() {
       if [[ -n "$latest" ]]; then
         current_branch=$(git rev-parse --abbrev-ref HEAD | tr -d '[:space:]')
         latest=$(echo "$latest" | tr -d '[:space:]')
+        # On vérifie que la branche existe bien sur le remote (précaution supplémentaire)
+        if ! git ls-remote --exit-code --heads origin "$latest" &> /dev/null; then
+          echo "git ls-remote --exit-code --heads origin "$latest""
+            log_error "❌ $nameModule -> La branche $latest n'existe pas sur le remote."
+            cd "$initial_dir"
+            continue
+        fi
         # Si on est déjà sur la bonne branche : simple pull
         if [[ "$current_branch" == "$latest" ]]; then
             if [ "$dry_run" = true ]; then
@@ -126,13 +133,6 @@ update_modules() {
                 try_git_pull "$latest" "$nameModule"
             fi
         else
-            # On vérifie que la branche existe bien sur le remote (précaution supplémentaire)
-            if ! git ls-remote --exit-code --heads origin "$latest" &> /dev/null; then
-              echo "git ls-remote --exit-code --heads origin "$latest""
-                log_error "❌ $nameModule -> La branche $latest n'existe pas sur le remote."
-                cd "$initial_dir"
-                continue
-            fi
             # On s’assure que la référence origin/$latest est à jour (toujours faire un fetch)
             if [ "$dry_run" = true ]; then
                 echo "[DRY-RUN] git fetch origin +refs/heads/$latest:refs/remotes/origin/$latest"
