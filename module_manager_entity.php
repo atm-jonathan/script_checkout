@@ -51,7 +51,7 @@ if ($res && $db->num_rows($res)) {
 }
 if (empty($entities)) {
     $entities = [1 => 'no entity'];
-} else {
+} elseif (isModEnabled('multicompany')) {
     require_once $dolibarrPath . '/htdocs/custom/multicompany/class/actions_multicompany.class.php';
 }
 

@@ -125,7 +125,14 @@ update_modules() {
         continue
       fi
 
-      # Réinitialisation locale
+      if ! git diff --quiet || ! git diff --cached --quiet; then
+        if [ "$no_reset" = true ]; then
+          log_error "⚠️ $nameModule -> Modifications locales détectées, module ignoré (--no-reset actif)."
+          cd "$initial_dir"
+          continue
+        fi
+      fi
+
       if [ "$dry_run" = true ]; then
         echo "[DRY-RUN] git reset --hard"
       else
@@ -200,12 +207,16 @@ update_modules() {
 # 🏁 Traitement des arguments en ligne de commande
 # ───────────────────────────────────────────────
 dry_run=false
+no_reset=false
 for arg in "$@"; do
   if [[ "$arg" == "--dry-run" ]]; then
     dry_run=true
     echo "🔍 Mode simulation activé (dry-run)"
   elif [[ "$arg" == "--no-activation" ]]; then
     skip_activation=true
+  elif [[ "$arg" == "--no-reset" ]]; then
+    no_reset=true
+    echo "⛔ Mode sans reset activé (ignore les modules modifiés localement)"
   fi
 done
 
