@@ -137,8 +137,6 @@ foreach ($entities as $fkEntity => $entityLabel) {
     if (!file_exists($classPath)) {
         echo "❌ Fichier de classe module introuvable : $classPath\n";
         continue;
-    } else {
-        echo "📄 Classe module trouvée : $classPath\n";
     }
     require_once $classPath;
 

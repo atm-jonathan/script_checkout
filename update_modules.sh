@@ -1,5 +1,46 @@
 #!/bin/bash
 
+# ==============================================================================
+# 📦 Script de mise à jour des modules Dolibarr
+# ==============================================================================
+# Ce script parcourt toutes les instances Dolibarr dans un dossier donné,
+# vérifie les modules présents dans `htdocs/custom`, et met à jour chaque
+# module depuis son dépôt Git (pull/changement de branche).
+#
+# ⚙️ Comporte également une activation conditionnelle des modules via un fichier
+# PHP `module_manager_entity.php` fourni.
+#
+# ------------------------------------------------------------------------------
+# ✅ Prérequis :
+# - Chaque module doit être un dépôt Git valide avec une URL distante correcte.
+# - L’API SellYourSaaS doit être accessible (clé API requise).
+#
+# ------------------------------------------------------------------------------
+# 💡 Utilisation :
+#   ./update_modules.sh [--dry-run] [--no-reset] [--no-activation]
+#
+# 📌 Options :
+#   --dry-run         N’exécute aucune commande Git ni activation PHP, affiche
+#                     uniquement les actions qui seraient faites.
+#
+#   --no-reset        Ignore les modules avec des modifications locales
+#                     (évite le git reset --hard).
+#
+#   --no-activation   Ne lance pas l'activation des modules via PHP.
+#
+# ------------------------------------------------------------------------------
+# 🧩 Variables importantes :
+# - base_dir : chemin vers les instances Dolibarr.
+# - api_key  : clé d’authentification pour l’API SellYourSaaS.
+# - url_base : URL de base pour les appels API.
+# - module_manager_entity : chemin vers le script PHP d’activation.
+#
+# ------------------------------------------------------------------------------
+# 🛠️ Résultat :
+# - Affiche un résumé des commandes exécutées par module.
+# - Affiche toutes les erreurs rencontrées à la fin.
+# ==============================================================================
+
 # Initialisation des tableaux pour erreurs et commandes enregistrées
 errors=()
 cmd=()
@@ -133,12 +174,15 @@ update_modules() {
         fi
       fi
 
-      if [ "$dry_run" = true ]; then
-        echo "[DRY-RUN] git reset --hard"
-      else
-        log_cmd "git reset --hard"
-        git reset --hard
+      if [ "$no_reset" != true ]; then
+        if [ "$dry_run" = true ]; then
+          echo "[DRY-RUN] git reset --hard"
+        else
+          log_cmd "git reset --hard"
+          git reset --hard
+        fi
       fi
+
 
       current_branch=$(git rev-parse --abbrev-ref HEAD | tr -d '[:space:]')
       latest=$(echo "$latest" | tr -d '[:space:]')
@@ -223,7 +267,7 @@ done
 # ───────────────────────────────────────────────
 # ▶️ Boucle principale sur chaque instance Dolibarr
 # ───────────────────────────────────────────────
-base_dir="/home/client/pack_git/"
+base_dir="/home/client/forma-sgp/"
 api_key="klI0NMf92Ky6nfO326nBa8S2hVKi3KMz"
 url_base="http://localhost/client/doliboard/dolibarr/htdocs/api/index.php"
 module_manager_entity="/home/client/pack_git/script_checkout/module_manager_entity.php"
